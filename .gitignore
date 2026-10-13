@@ -1,0 +1,9 @@
+# Datos confidenciales (acuerdo de confidencialidad)
+*.csv
+*.xlsx
+*.xls
+# Contraseñas
+.env
+# Archivos temporales de Python
+__pycache__/
+.venv/

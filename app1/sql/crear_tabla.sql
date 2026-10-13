@@ -1,0 +1,28 @@
+-- Tabla cruda: guarda el CSV tal cual llega (todo como texto)
+CREATE TABLE IF NOT EXISTS equipos_raw (
+    equipo_id TEXT,
+    usuario_id TEXT,
+    pais TEXT,
+    region TEXT,
+    sistema_operativo TEXT,
+    version_so TEXT,
+    estado_tpm TEXT,
+    encryption_readiness TEXT,
+    estado_cifrado TEXT,
+    tecnologia_cifrado TEXT,
+    estado_cumplimiento TEXT,
+    categoria_equipo TEXT,
+    clase_equipo TEXT,
+    perfil_privilegio TEXT,
+    antiguedad_meses TEXT,
+    banda_antiguedad TEXT,
+    estado_cuenta TEXT,
+    mes_ultimo_logon TEXT,
+    banda_recencia TEXT,
+    estado_hardware TEXT,
+    tipo_red TEXT,
+    fuente_datos TEXT,
+    en_mdm TEXT,
+    en_ad TEXT,
+    en_macos TEXT
+);
