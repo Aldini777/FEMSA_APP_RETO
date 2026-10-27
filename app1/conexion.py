@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+#python -m pip install python-dotenv psycopg2-binary
+
 import psycopg2
 from dotenv import load_dotenv
 
