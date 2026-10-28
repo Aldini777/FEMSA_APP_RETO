@@ -26,4 +26,5 @@ if __name__ == "__main__":
     with conectar() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM equipos_raw;")
-            print("Conexión exitosa. Filas en equipos_raw:", cur.fetchone()[0])
+            resultado = cur.fetchone()
+            print("Conexión exitosa. Filas en equipos_raw:", resultado[0] if resultado is not None else 0)
