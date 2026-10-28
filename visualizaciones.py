@@ -4,12 +4,14 @@ App 2 (Dashboard) - Prototipo de visualizaciones.
 Solo muestra gráficas sobre la tabla equipos_raw (sin pestañas ni reglas de negocio todavía).
 Ejecutar desde la raíz del repo:
     pip install streamlit pandas plotly
-    streamlit run app2/visualizaciones.py
+    streamlit run visualizaciones.py
 
 Fuente de datos:
   - Base de datos PostgreSQL offline (tabla equipos_raw, la llena la App 1), o
   - Un CSV subido en la barra lateral (se valida con la misma función leer_csv de la App 1).
 """
+
+# python -m streamlit run visualizaciones.py
 import sys
 import tempfile
 from pathlib import Path
@@ -18,8 +20,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# La App 1 vive en ../app1: se reutilizan su conexión y su validación del CSV
-RAIZ = Path(__file__).resolve().parent.parent
+# La App 1 vive en app1: se reutilizan su conexión y su validación del CSV
+RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ / "app1"))
 
 from cargar_datos import leer_csv   # noqa: E402
@@ -59,7 +61,7 @@ def cargar_desde_db():
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM equipos_raw")
             filas = cur.fetchall()
-            columnas = [d[0] for d in cur.description]
+            columnas = [d[0] for d in (cur.description or [])]
     finally:
         conn.close()
     return pd.DataFrame(filas, columns=columnas)
@@ -223,7 +225,7 @@ def mostrar(df):
         "Elige las variables para probar cruces antes de definirlos en el dashboard.")
     a, b = st.columns(2)
     var1 = a.selectbox("Variable principal", CATEGORICAS, index=CATEGORICAS.index("pais"),
-                       format_func=ETIQUETAS.get)
+                       format_func=lambda c: ETIQUETAS[c])
     var2 = b.selectbox("Cruzar con (opcional)", ["(ninguna)"] + CATEGORICAS,
                        format_func=lambda c: c if c == "(ninguna)" else ETIQUETAS[c])
     if var2 == "(ninguna)":

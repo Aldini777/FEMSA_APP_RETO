@@ -94,7 +94,10 @@ def cargar_a_postgres(datos):
                 cur.execute("TRUNCATE TABLE equipos_raw;")
                 cur.copy_expert("COPY equipos_raw FROM STDIN WITH (FORMAT csv)", buffer)
                 cur.execute("SELECT COUNT(*) FROM equipos_raw;")
-                total = cur.fetchone()[0]
+                fila_total = cur.fetchone()
+                if fila_total is None:
+                    raise RuntimeError("No se pudo obtener el total de filas cargadas")
+                total = fila_total[0]
     finally:
         conn.close()
     return total
