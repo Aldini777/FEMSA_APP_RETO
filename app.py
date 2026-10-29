@@ -8,11 +8,12 @@ Ejecutar desde la raíz del repo:
     pip install -r requirements.txt
     streamlit run app.py
 """
+import json
+import math
 import sys
 import unicodedata
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -68,73 +69,6 @@ def region_de(pais):
     return PAISES.get(pais, (NO_DISPONIBLE,))[0]
 
 
-# ---------------------------------------------------------------- datos de ejemplo
-@st.cache_data
-def datos_ejemplo(n=3000, semilla=7):
-    """Datos ficticios para probar la app sin base de datos ni CSV."""
-    rng = np.random.default_rng(semilla)
-    pesos = np.array([30, 6, 3, 5, 4, 12, 4, 20, 3, 9, 4], dtype=float)
-    so = rng.choice(["Windows 11", "Windows 10", "macOS"], n, p=[0.5, 0.35, 0.15])
-    df = pd.DataFrame({c: "" for c in viz.COLUMNAS}, index=range(n))
-    df["equipo_id"] = [f"EQ{i:05d}" for i in range(n)]
-    df["usuario_id"] = [f"U{i:05d}" for i in rng.integers(0, n, n)]
-    df["pais"] = rng.choice(list(PAISES), n, p=pesos / pesos.sum())
-    df["region"] = df["pais"].map(region_de)
-    df["sistema_operativo"] = so
-    df["version_so"] = rng.choice(["22H2", "23H2", "24H2"], n)
-    df["estado_tpm"] = rng.choice(["TPM 2.0", "TPM 1.2", "Sin TPM"], n, p=[0.8, 0.12, 0.08])
-    df["encryption_readiness"] = rng.choice(["Listo", "No listo"], n, p=[0.85, 0.15])
-    df["estado_cifrado"] = rng.choice(["Cifrado", "No cifrado", "Parcial"], n, p=[0.7, 0.2, 0.1])
-    df["tecnologia_cifrado"] = np.where(so == "macOS", "FileVault", "BitLocker")
-    df["estado_cumplimiento"] = rng.choice(["Cumple", "No cumple"], n, p=[0.75, 0.25])
-    df["categoria_equipo"] = rng.choice(["Laptop", "Desktop"], n, p=[0.7, 0.3])
-    df["clase_equipo"] = rng.choice(["Estándar", "Ejecutivo"], n, p=[0.9, 0.1])
-    df["perfil_privilegio"] = rng.choice(["Usuario", "Administrador"], n, p=[0.85, 0.15])
-    meses = rng.integers(1, 84, n)
-    df["antiguedad_meses"] = meses.astype(str)
-    df["banda_antiguedad"] = pd.cut(meses, [0, 24, 48, 84],
-                                    labels=["0-2 años", "2-4 años", "4+ años"]).astype(str)
-    df["estado_cuenta"] = rng.choice(["Activa", "Inactiva"], n, p=[0.9, 0.1])
-    df["banda_recencia"] = rng.choice(["< 30 días", "30-90 días", "> 90 días"], n, p=[0.7, 0.2, 0.1])
-    df["estado_hardware"] = rng.choice(["Vigente", "Obsoleto"], n, p=[0.8, 0.2])
-    df["tipo_red"] = rng.choice(["Corporativa", "VPN", "Externa"], n)
-    df["fuente_datos"] = rng.choice(["Intune", "AD", "Jamf"], n)
-    for col in ("en_mdm", "en_ad", "en_macos"):
-        df[col] = rng.choice(["Sí", "No"], n)
-    return df
-
-
-def obtener_datos():
-    """Igual que viz.obtener_datos, pero con una opción de datos ficticios."""
-    st.sidebar.header("Fuente de datos")
-    fuente = st.sidebar.radio(
-        "Origen", ["Base de datos (equipos_raw)", "Subir CSV", "Datos de ejemplo (ficticios)"])
-
-    if fuente == "Datos de ejemplo (ficticios)":
-        st.sidebar.caption("Datos inventados, solo para probar la app.")
-        return viz.limpiar(datos_ejemplo())
-    if fuente == "Subir CSV":
-        archivo = st.sidebar.file_uploader("Archivo CSV", type="csv")
-        if archivo is None:
-            st.info("Sube un CSV en la barra lateral para ver las gráficas.")
-            return None
-        try:
-            return viz.limpiar(viz.cargar_desde_csv(archivo))
-        except ValueError as error:
-            st.error(f"Archivo rechazado: {error}")
-            return None
-
-    try:
-        df = viz.cargar_desde_db()
-    except Exception as error:   # sin BD levantada, .env faltante, etc.
-        st.error(f"No se pudo leer la base de datos: {error}")
-        return None
-    if df.empty:
-        st.warning("La tabla equipos_raw está vacía. Corre primero la carga de la App 1.")
-        return None
-    return viz.limpiar(df)
-
-
 # ---------------------------------------------------------------- selección de países
 # La selección vive en st.session_state como un checkbox por país (clave "sel_<país>").
 # El mapa y los botones de región solo prenden/apagan esos checkboxes.
@@ -163,33 +97,79 @@ def al_hacer_clic_en_mapa():
     st.session_state.mapa_version += 1
 
 
-def mapa(conteos):
-    """Mapa de Latinoamérica: países seleccionados en color, el resto en gris."""
-    elegidos = set(seleccionados(EN_MAPA))
-    z = [1 if p in elegidos else 0 for p in EN_MAPA]
-    texto = [f"<b>{p}</b><br>{region_de(p)}<br>{conteos.get(p, 0):,} equipos" for p in EN_MAPA]
+# Colores del mapa
+COLOR_ELEGIDO, COLOR_DISPONIBLE, COLOR_FONDO = "#d6001c", "#b8c4d4", "#eceff3"
+# Dónde va el nombre de cada país respecto a su punto (Centroamérica es estrecha)
+POS_ETIQUETA = {"Guatemala": "middle left", "Nicaragua": "middle right",
+                "Costa Rica": "bottom left", "Panamá": "top right",
+                "Colombia": "bottom center", "Uruguay": "middle right"}
 
+
+def merc(lat):
+    """Latitud -> eje Y en proyección Mercator (en 'grados' para mantener la escala)."""
+    return math.degrees(math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)))
+
+
+@st.cache_data
+def contornos():
+    """Contornos simplificados (Natural Earth 1:50m) listos para dibujar: ISO-3 -> (xs, ys)."""
+    datos = json.loads((RAIZ / "mapa_latam.json").read_text(encoding="utf-8"))
+    salida = {}
+    for iso, pais in datos.items():
+        xs, ys = [], []
+        for anillo in pais["anillos"]:
+            xs += [x for x, _ in anillo] + [None]
+            ys += [merc(y) for _, y in anillo] + [None]
+        salida[iso] = (xs, ys)
+    return salida
+
+
+def mapa(conteos):
+    """Mapa ligero de Latinoamérica (sin motor geográfico): elegidos en rojo, resto en gris."""
+    geo = contornos()
+    elegidos = set(seleccionados(EN_MAPA))
+    nuestros = {PAISES[p][1] for p in EN_MAPA}
     fig = go.Figure()
-    fig.add_trace(go.Choropleth(
-        locations=[PAISES[p][1] for p in EN_MAPA], z=z, zmin=0, zmax=1,
-        colorscale=[[0, "#d9dee5"], [1, "#d6001c"]], showscale=False,
-        customdata=[[p] for p in EN_MAPA], text=texto, hoverinfo="text",
-        marker_line_color="white", marker_line_width=0.8,
+
+    # Países fuera del catálogo: solo de fondo, sin interacción
+    xs, ys = [], []
+    for iso, (x, y) in geo.items():
+        if iso not in nuestros:
+            xs += x
+            ys += y
+    fig.add_trace(go.Scatter(x=xs, y=ys, fill="toself", mode="lines", hoverinfo="skip",
+                             fillcolor=COLOR_FONDO, line=dict(color="white", width=0.8)))
+
+    # Países del catálogo: uno por traza para poder colorearlos por separado
+    for p in EN_MAPA:
+        x, y = geo[PAISES[p][1]]
+        fig.add_trace(go.Scatter(
+            x=x, y=y, fill="toself", mode="lines", hoveron="fills",
+            name=f"{p} · {conteos.get(p, 0):,} equipos", customdata=[p] * len(x),
+            fillcolor=COLOR_ELEGIDO if p in elegidos else COLOR_DISPONIBLE,
+            line=dict(color="white", width=1),
+        ))
+
+    # Punto + nombre en cada país: es lo que se clica (funciona igual en países pequeños)
+    fig.add_trace(go.Scatter(
+        x=[PAISES[p][3] for p in EN_MAPA], y=[merc(PAISES[p][2]) for p in EN_MAPA],
+        mode="markers+text", text=EN_MAPA, customdata=EN_MAPA,
+        textposition=[POS_ETIQUETA.get(p, "top center") for p in EN_MAPA],
+        textfont=dict(size=11, color="#2b3440"),
+        hovertext=[f"<b>{p}</b><br>{region_de(p)}<br>{conteos.get(p, 0):,} equipos"
+                   for p in EN_MAPA],
+        hoverinfo="text",
+        marker=dict(size=12, color=["#7a0010" if p in elegidos else "#5b6b7f" for p in EN_MAPA],
+                    line=dict(color="white", width=2)),
+        unselected=dict(marker=dict(opacity=1), textfont=dict(color="#2b3440")),
     ))
-    # Marcadores en el centro de cada país: más fáciles de clicar en países pequeños
-    fig.add_trace(go.Scattergeo(
-        lat=[PAISES[p][2] for p in EN_MAPA], lon=[PAISES[p][3] for p in EN_MAPA],
-        mode="markers", customdata=[[p] for p in EN_MAPA], text=texto, hoverinfo="text",
-        marker=dict(size=11, color=["#7a0010" if v else "#5b6b7f" for v in z],
-                    line=dict(color="white", width=1.5)),
-    ))
-    fig.update_geos(
-        projection_type="mercator", lataxis_range=[-56, 33], lonaxis_range=[-118, -33],
-        showcountries=True, countrycolor="white", showland=True, landcolor="#f1f3f6",
-        showocean=True, oceancolor="#eaf2fb", showframe=False, resolution=50,
-    )
-    fig.update_layout(height=560, margin=dict(l=0, r=0, t=0, b=0),
-                      showlegend=False, dragmode=False, clickmode="event+select")
+
+    fig.update_xaxes(range=[-118, -33], visible=False, fixedrange=True)
+    fig.update_yaxes(range=[merc(-56), merc(33)], visible=False, fixedrange=True,
+                     scaleanchor="x", scaleratio=1)
+    fig.update_layout(height=600, margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
+                      plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                      dragmode=False, hoverlabel=dict(bgcolor="white", font_size=13))
     return fig
 
 
@@ -237,7 +217,7 @@ def main():
     st.set_page_config(page_title="Auditoría de cifrado - FEMSA", layout="wide")
     st.title("Auditoría de cifrado de equipos")
 
-    df = obtener_datos()
+    df = viz.obtener_datos()
     if df is None:
         return
 

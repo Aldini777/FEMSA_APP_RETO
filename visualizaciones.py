@@ -227,11 +227,11 @@ def mostrar(df):
     var2 = b.selectbox("Cruzar con (opcional)", ["(ninguna)"] + CATEGORICAS,
                        format_func=lambda c: c if c == "(ninguna)" else ETIQUETAS[c])
     if var2 == "(ninguna)":
-        st.plotly_chart(barras(df, var1), use_container_width=True)
+        st.plotly_chart(barras(df, var1), use_container_width=True, key="libre_barras")
     elif var1 == var2:
         st.info("Elige dos variables distintas para el cruce.")
     else:
-        st.plotly_chart(heatmap(df, var1, var2), use_container_width=True)
+        st.plotly_chart(heatmap(df, var1, var2), use_container_width=True, key="libre_heatmap")
 
     with st.expander("Ver datos"):
         st.dataframe(df.head(500), use_container_width=True)
