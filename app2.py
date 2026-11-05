@@ -98,7 +98,8 @@ def al_hacer_clic_en_mapa():
 
 
 # Colores del mapa
-COLOR_ELEGIDO, COLOR_DISPONIBLE, COLOR_FONDO = "#d6001c", "#b8c4d4", "#eceff3"
+# Rojo FEMSA para lo elegido; grises neutros para el resto (misma paleta que .streamlit/config.toml)
+COLOR_ELEGIDO, COLOR_DISPONIBLE, COLOR_FONDO = "#C8102E", "#B9BEC6", "#ECEEF1"
 # Dónde va el nombre de cada país respecto a su punto (Centroamérica es estrecha)
 POS_ETIQUETA = {"Guatemala": "middle left", "Nicaragua": "middle right",
                 "Costa Rica": "bottom left", "Panamá": "top right",
@@ -159,7 +160,7 @@ def mapa(conteos):
         hovertext=[f"<b>{p}</b><br>{region_de(p)}<br>{conteos.get(p, 0):,} equipos"
                    for p in EN_MAPA],
         hoverinfo="text",
-        marker=dict(size=12, color=["#7a0010" if p in elegidos else "#5b6b7f" for p in EN_MAPA],
+        marker=dict(size=12, color=["#7A1F2B" if p in elegidos else "#3D4A5C" for p in EN_MAPA],
                     line=dict(color="white", width=2)),
         unselected=dict(marker=dict(opacity=1), textfont=dict(color="#2b3440")),
     ))
@@ -174,7 +175,7 @@ def mapa(conteos):
 
 
 def selector_paises(df):
-    """Dibuja el mapa y las listas por región. Regresa los países elegidos."""
+    """Dibuja el mapa, las listas por región y los filtros. Regresa (países, sistemas operativos)."""
     conteos = df["pais"].value_counts().to_dict()
     # Catálogo + cualquier país del archivo que no esté en el catálogo
     todos = list(PAISES) + sorted(set(conteos) - set(PAISES))
@@ -209,7 +210,13 @@ def selector_paises(df):
             width="stretch", config={"displayModeBar": False, "scrollZoom": False},
         )
 
-    return seleccionados(todos)
+    with col_lista:
+        st.markdown("**Filtros**")
+        so = st.multiselect(viz.ETIQUETAS["sistema_operativo"],
+                            sorted(df["sistema_operativo"].unique()),
+                            placeholder="Todos los sistemas operativos")
+
+    return seleccionados(todos), so
 
 
 # ---------------------------------------------------------------- app
@@ -225,16 +232,13 @@ def main():
     df["pais"] = df["pais"].map(pais_canonico)
     df["region"] = df["pais"].map(region_de)
 
-    elegidos = selector_paises(df)
+    elegidos, so = selector_paises(df)
     if elegidos:
         df = df[df["pais"].isin(elegidos)]
         st.info("Mostrando: " + ", ".join(elegidos))
     else:
         st.info("Mostrando: todos los países")
 
-    st.sidebar.header("Filtros")
-    so = st.sidebar.multiselect(viz.ETIQUETAS["sistema_operativo"],
-                                sorted(df["sistema_operativo"].unique()))
     if so:
         df = df[df["sistema_operativo"].isin(so)]
 

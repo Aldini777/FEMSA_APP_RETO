@@ -50,6 +50,11 @@ ETIQUETAS = {
 }
 CATEGORICAS = list(ETIQUETAS)   # columnas que tienen sentido para conteos
 
+# Paleta FEMSA (la misma que .streamlit/config.toml). Se fija aquí también porque
+# el tema de Streamlit no recolorea las donas.
+PALETA = ["#C8102E", "#3D4A5C", "#E8A317", "#8A9BB0", "#7A1F2B", "#C9B79C"]
+px.defaults.color_discrete_sequence = PALETA
+
 
 # ---------------------------------------------------------------- carga de datos
 @st.cache_data(ttl=300, show_spinner="Leyendo equipos_raw...")
@@ -87,6 +92,19 @@ def limpiar(df):
 
 
 # ---------------------------------------------------------------- gráficas
+def acortar(texto, largo=22):
+    """Recorta etiquetas largas para que no aplasten la gráfica."""
+    texto = str(texto)
+    return texto if len(texto) <= largo else texto[:largo - 1].rstrip() + "…"
+
+
+def acortar_eje(fig, eje, valores):
+    """Muestra las etiquetas recortadas en el eje; el texto completo sigue en el hover."""
+    valores = list(valores)
+    getattr(fig, f"update_{eje}axes")(tickmode="array", tickvals=valores,
+                                      ticktext=[acortar(v) for v in valores])
+
+
 def conteo(df, col):
     return df[col].value_counts().rename_axis(col).reset_index(name="equipos")
 
@@ -97,8 +115,10 @@ def barras(df, col, horizontal=False):
         fig = px.bar(datos, x="equipos", y=col,
                      orientation="h", text="equipos")
         fig.update_yaxes(categoryorder="total ascending")
+        acortar_eje(fig, "y", datos[col])
     else:
         fig = px.bar(datos, x=col, y="equipos", text="equipos")
+        acortar_eje(fig, "x", datos[col])
     fig.update_layout(xaxis_title=None if not horizontal else "Equipos",
                       yaxis_title="Equipos" if not horizontal else None,
                       margin=dict(t=30, b=10))
@@ -107,8 +127,8 @@ def barras(df, col, horizontal=False):
 
 def dona(df, col):
     fig = px.pie(conteo(df, col), names=col, values="equipos", hole=0.5)
-    fig.update_traces(textinfo="percent+label")
-    fig.update_layout(showlegend=False, margin=dict(t=30, b=10))
+    fig.update_traces(textinfo="percent+label", marker=dict(colors=PALETA))
+    fig.update_layout(showlegend=False, margin=dict(t=30, b=10), piecolorway=PALETA)
     return fig
 
 
@@ -116,6 +136,7 @@ def apiladas(df, eje, color):
     """Barras apiladas al 100 %: composición de `color` dentro de cada valor de `eje`."""
     datos = df.groupby([eje, color]).size().reset_index(name="equipos")
     fig = px.bar(datos, x=eje, y="equipos", color=color)
+    acortar_eje(fig, "x", datos[eje].unique())
     fig.update_layout(barmode="stack", barnorm="percent", yaxis_title="% de equipos",
                       xaxis_title=None, margin=dict(t=30, b=10))
     return fig
@@ -132,7 +153,9 @@ def histograma_antiguedad(df):
 def heatmap(df, fila, columna):
     tabla = pd.crosstab(df[fila], df[columna])
     fig = px.imshow(tabla, text_auto=True, aspect="auto",
-                    color_continuous_scale="Blues")
+                    color_continuous_scale="Reds")
+    acortar_eje(fig, "x", tabla.columns)
+    acortar_eje(fig, "y", tabla.index)
     fig.update_layout(xaxis_title=ETIQUETAS[columna], yaxis_title=ETIQUETAS[fila],
                       margin=dict(t=30, b=10))
     return fig

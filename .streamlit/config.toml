@@ -1,0 +1,19 @@
+# Tema visual de la app: paleta inspirada en FEMSA (rojo corporativo + neutros)
+[theme]
+base = "light"
+primaryColor = "#C8102E"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F5F7"
+textColor = "#2B2F36"
+linkColor = "#A50D26"
+borderColor = "#E1E4E8"
+redColor = "#C8102E"
+blueColor = "#3D4A5C"
+blueBackgroundColor = "#EEF0F3"
+blueTextColor = "#2B2F36"
+
+# Colores de las gráficas, en orden fijo
+# rojo FEMSA, gris pizarra, ámbar, gris azulado, vino, arena
+chartCategoricalColors = ["#C8102E", "#3D4A5C", "#E8A317", "#8A9BB0", "#7A1F2B", "#C9B79C"]
+# Escala de un solo tono (rojo claro -> vino) para mapas de calor
+chartSequentialColors = ["#FBE6E9", "#F0B6BF", "#E48796", "#D9576C", "#CE2843", "#BC0F2B", "#A50E26", "#8D0D21", "#760C1C", "#5E0B17"]
