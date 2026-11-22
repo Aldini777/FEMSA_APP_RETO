@@ -7,4 +7,8 @@
 # Archivos temporales de Python
 __pycache__/
 .venv/
+# Reportes generados (traen datos reales)
+*.pdf
+# Entornos de Python extra
+.venv*/
 .env
