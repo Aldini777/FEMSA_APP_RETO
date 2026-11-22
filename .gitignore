@@ -3,7 +3,7 @@
 *.xlsx
 *.xls
 # Contraseñas
-.env
+*.env
 # Archivos temporales de Python
 __pycache__/
 .venv/
