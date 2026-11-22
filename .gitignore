@@ -11,3 +11,4 @@ __pycache__/
 *.pdf
 # Entornos de Python extra
 .venv*/
+.env
