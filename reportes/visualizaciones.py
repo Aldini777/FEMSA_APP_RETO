@@ -2,9 +2,8 @@
 App 2 (Dashboard) - Prototipo de visualizaciones.
 
 Solo muestra gráficas sobre la tabla equipos_raw (sin pestañas ni reglas de negocio todavía).
-Ejecutar desde la raíz del repo:
-    pip install streamlit pandas plotly
-    streamlit run visualizaciones.py
+Ejecutar desde la carpeta reportes:
+    python -m streamlit run app2.py
 
 Fuente de datos:
   - Base de datos PostgreSQL offline (tabla equipos_raw, la llena la App 1), o
@@ -22,10 +21,12 @@ import streamlit as st
 
 # La App 1 vive en app1: se reutilizan su conexión y su validación del CSV
 RAIZ = Path(__file__).resolve().parent
-sys.path.insert(0, str(RAIZ / "app1"))
+REPO = RAIZ.parent
+sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(RAIZ))
 
-from cargar_datos import leer_csv   # noqa: E402
-from conexion import conectar       # noqa: E402
+from reportes.app1.cargar_datos import leer_csv   # noqa: E402
+from reportes.app1.conexion import conectar       # noqa: E402
 
 # Mismo orden que COLUMNAS_ESPERADAS (App 1) y que sql/crear_tabla.sql
 COLUMNAS = [

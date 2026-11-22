@@ -4,25 +4,31 @@ App principal (Streamlit) - Dashboard de cifrado filtrable por país.
 Reutiliza las gráficas de visualizaciones.py y agrega un selector de países
 agrupado por región, que se puede usar desde un mapa (clic en el país) o por nombre.
 
-Ejecutar desde la raíz del repo:
-    pip install -r requirements.txt
-    streamlit run app.py
+Ejecutar:
+cd reportes
+python -m streamlit run app2.py
 """
 import json
 import math
 import sys
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# visualizaciones.py importa módulos de la App 1 (cargar_datos, conexion)
+# Agregamos ambas carpetas al path para que app2.py funcione tanto si se
+# ejecuta desde reportes como desde la raíz del repositorio.
 RAIZ = Path(__file__).resolve().parent
-sys.path.insert(0, str(RAIZ / "app1"))
+REPO = RAIZ.parent
+sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(RAIZ))
 
-import visualizaciones as viz   # noqa: E402
+import reportes.visualizaciones as viz   # noqa: E402
+from reporte import (generar_reporte_ejecutivo_pdf,
+                     generar_reporte_tecnico_pdf)  # noqa: E402
 
 # ---------------------------------------------------------------- catálogo de países
 NO_DISPONIBLE = "No disponible"
@@ -244,6 +250,54 @@ def main():
 
     st.divider()
     viz.mostrar(df)
+
+    st.sidebar.divider()
+    st.sidebar.header("Descarga de reportes")
+    tipo_reporte = st.sidebar.radio(
+        "Tipo de reporte",
+        ["Reporte ejecutivo", "Reporte técnico"],
+    )
+    st.sidebar.caption(f"Equipos incluidos: {len(df):,}")
+
+    try:
+        paises_pdf = elegidos
+        if NO_DISPONIBLE in paises_pdf:
+            paises_pdf = [
+                "Sin país asignado" if pais == NO_DISPONIBLE else pais
+                for pais in paises_pdf
+            ]
+        sistemas_pdf = so
+
+        if tipo_reporte == "Reporte ejecutivo":
+            pdf = generar_reporte_ejecutivo_pdf(
+                df, paises_pdf, sistemas_pdf, df_filtrado=True)
+            nombre_tipo = "ejecutivo"
+        else:
+            pdf = generar_reporte_tecnico_pdf(
+                df, paises_pdf, sistemas_pdf, df_filtrado=True)
+            nombre_tipo = "tecnico"
+
+        nombre = "reporte_" + nombre_tipo
+        if elegidos:
+            nombre += "_" + "_".join(elegidos)
+        else:
+            nombre += "_general"
+        nombre += "_" + datetime.now().strftime("%Y%m%d") + ".pdf"
+
+        st.sidebar.download_button(
+            "Descargar PDF",
+            data=pdf,
+            file_name=nombre.replace(" ", "_"),
+            mime="application/pdf",
+            width="stretch",
+            key="descarga_pdf_" + nombre_tipo + "_" + str(len(df)) + "_" +
+                "_".join(elegidos).replace(" ", "_") + "_" +
+                "_".join(so).replace(" ", "_"),
+        )
+    except ValueError as error:
+        st.sidebar.warning(str(error))
+    except Exception as error:
+        st.sidebar.error(f"No se pudo generar el reporte: {error}")
 
 
 if __name__ == "__main__":

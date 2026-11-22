@@ -15,6 +15,7 @@ Logo: guardar el archivo oficial en reportes/assets/logo_femsa.png
 import io
 import os
 import re
+import matplotlib.pyplot as plt
 from datetime import datetime
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.pdfgen import canvas as rl_canvas
-from reportlab.platypus import (KeepTogether, PageBreak, Paragraph, SimpleDocTemplate,
+from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate,
                                 Spacer, Table, TableStyle)
 
 try:  # en la compu de desarrollo la contraseña está en el .env; en Docker la pone Docker
@@ -454,5 +455,253 @@ def generar_reporte_pdf(df, paises=None, sistemas=None, fecha=None):
     doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=2 * cm, rightMargin=2 * cm,
                             topMargin=3.1 * cm, bottomMargin=2.2 * cm,
                             title="Reporte de cifrado de equipos", author="Auditoría Interna")
+    doc.build(h, canvasmaker=_CanvasNumerado)
+    return buffer.getvalue()
+
+
+def generar_reporte_tecnico_pdf(df, paises=None, sistemas=None, fecha=None,
+                                df_filtrado=False):
+    """Genera un PDF técnico con indicadores, resúmenes y detalle de equipos."""
+    fecha = fecha or datetime.now()
+    preparado = preparar(df)
+    t = preparado if df_filtrado else filtrar(preparado, paises, sistemas)
+    if t.empty:
+        raise ValueError("No hay equipos con los filtros elegidos.")
+
+    e = _estilos()
+    n = _numeros(t)
+    texto_paises = ", ".join(paises) if paises else "Todos"
+    texto_so = ", ".join(sistemas) if sistemas else "Todos"
+
+    h = [
+        Paragraph("Reporte Técnico de Cifrado de Equipos", e["titulo"]),
+        Paragraph("Detalle operativo y trazabilidad de equipos", e["subtitulo"]),
+        _ficha(fecha, texto_paises, texto_so, n["total"], e),
+        Spacer(1, 12),
+        _tarjetas(n, e),
+    ]
+
+    h += _seccion("1.", "Resumen técnico", e)
+    h.append(Paragraph(_parrafo_grupo(t), e["normal"]))
+
+    h += _seccion("2.", "Resumen por país", e)
+    filas = [[
+        Paragraph(c, e["celda_enc"] if i == 0 else e["celda_enc_der"])
+        for i, c in enumerate(("País", "Equipos", "En MDM", "Cifrados", "Sin cifrar", "Con desviación"))
+    ]]
+    for pais in sorted(t["pais_reporte"].unique()):
+        grupo = t[t["pais_reporte"] == pais]
+        ng = _numeros(grupo)
+        valores = [pais, f"{ng['total']:,}", f"{ng['en_mdm']:,}", f"{ng['cifrados']:,}",
+                   f"{ng['no_cifrados']:,}", f"{ng['con_desv']:,}"]
+        filas.append([
+            Paragraph(valores[0], e["celda"]),
+            *[Paragraph(valor, e["celda_der"]) for valor in valores[1:]],
+        ])
+    h.append(_tabla(filas, [5 * cm, 2.2 * cm, 2.2 * cm, 2.2 * cm, 2.7 * cm, 3 * cm], e,
+                    titulo="Indicadores por país"))
+
+    h += _seccion("3.", "Detalle de equipos", e)
+    columnas = [
+        ("equipo_id", "Equipo"),
+        ("pais_reporte", "País"),
+        ("sistema_operativo", "SO"),
+        ("en_mdm", "MDM"),
+        ("estado_cifrado", "Cifrado"),
+        ("tecnologia_cifrado", "Tecnología"),
+        ("banda_recencia", "Recencia"),
+        ("estado_cuenta", "Cuenta"),
+    ]
+    filas = [[Paragraph(titulo, e["celda_enc"]) for _, titulo in columnas]]
+    for _, fila in t.head(500).sort_values(["pais_reporte", "equipo_id"], kind="mergesort").iterrows():
+        valores = [str(fila.get(columna, "") or "") for columna, _ in columnas]
+        filas.append([
+            Paragraph(valores[0], e["celda"]),
+            *[Paragraph(valor, e["celda"]) for valor in valores[1:]],
+        ])
+    h.append(_tabla(
+        filas,
+        [2.3 * cm, 2.5 * cm, 2.3 * cm, 1.5 * cm, 2.2 * cm, 3 * cm, 2.3 * cm, 1.5 * cm],
+        e,
+        titulo=f"Detalle técnico ({min(len(t), 500):,} de {len(t):,} equipos)",
+    ))
+    if len(t) > 500:
+        h.append(Paragraph(
+            "Se muestran los primeros 500 equipos para mantener el PDF legible.",
+            e["nota"],
+        ))
+
+    h += _seccion("4.", "Equipos con desviaciones", e)
+    desviaciones = t[t["motivos"].map(len).gt(0)].sort_values(
+        ["pais_reporte", "equipo_id"], kind="mergesort")
+    if desviaciones.empty:
+        h.append(Paragraph("No se encontraron equipos con desviaciones.", e["normal"]))
+    else:
+        filas = [[Paragraph(c, e["celda_enc"]) for c in (
+            "Equipo", "País", "Sistema operativo", "Desviación")]]
+        for _, fila in desviaciones.iterrows():
+            filas.append([
+                Paragraph(str(fila["equipo_id"]), e["celda"]),
+                Paragraph(str(fila["pais_reporte"]), e["celda"]),
+                Paragraph(str(fila["sistema_operativo"]), e["celda"]),
+                Paragraph("; ".join(fila["motivos"]), e["celda"]),
+            ])
+        h.append(_tabla(
+            filas,
+            [3 * cm, 3.3 * cm, 2.8 * cm, 8.5 * cm],
+            e,
+            titulo=f"{len(desviaciones):,} equipos con al menos una desviación",
+        ))
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=3.1 * cm,
+        bottomMargin=2.2 * cm,
+        title="Reporte técnico de cifrado de equipos",
+        author="Auditoría Interna",
+    )
+    doc.build(h, canvasmaker=_CanvasNumerado)
+    return buffer.getvalue()
+
+
+def _grafica_png(titulo, tipo, df, columna=None, columna2=None):
+    """Convierte una gráfica del dashboard en una imagen PNG para el reporte ejecutivo."""
+    fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    colores = ["#C8102E", "#3D4A5C", "#E8A317", "#8A9BB0", "#7A1F2B", "#C9B79C"]
+
+    if tipo == "dona" and columna:
+        conteo = df[columna].fillna("Sin dato").astype(str).value_counts()
+        ax.pie(conteo.values, labels=conteo.index, autopct="%1.1f%%",
+               colors=colores, startangle=90, textprops={"fontsize": 8})
+        centro = plt.Circle((0, 0), 0.55, fc="white")
+        ax.add_artist(centro)
+
+    elif tipo == "barras" and columna:
+        conteo = df[columna].fillna("Sin dato").astype(str).value_counts().head(12)
+        ax.bar(range(len(conteo)), conteo.values, color=colores[0])
+        ax.set_xticks(range(len(conteo)))
+        ax.set_xticklabels([str(v)[:18] for v in conteo.index], rotation=35,
+                           ha="right", fontsize=7)
+        ax.set_ylabel("Equipos", fontsize=8)
+        ax.grid(axis="y", alpha=0.2)
+        for i, valor in enumerate(conteo.values):
+            ax.text(i, valor, f"{valor:,}", ha="center", va="bottom", fontsize=7)
+
+    elif tipo == "apiladas" and columna and columna2:
+        tabla = pd.crosstab(df[columna].fillna("Sin dato"),
+                            df[columna2].fillna("Sin dato"), normalize="index") * 100
+        izquierda = 0
+        for i, categoria in enumerate(tabla.columns):
+            valores = tabla[categoria].values
+            ax.barh(range(len(tabla.index)), valores, left=izquierda,
+                    label=str(categoria)[:24], color=colores[i % len(colores)])
+            izquierda += valores
+        ax.set_yticks(range(len(tabla.index)))
+        ax.set_yticklabels([str(v)[:22] for v in tabla.index], fontsize=7)
+        ax.set_xlabel("% de equipos", fontsize=8)
+        ax.invert_yaxis()
+        ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.42),
+                  ncol=2, fontsize=7, frameon=False)
+        ax.grid(axis="x", alpha=0.2)
+
+    elif tipo == "histograma":
+        valores = pd.to_numeric(df.get("antiguedad_meses"), errors="coerce").dropna()
+        ax.hist(valores, bins=30, color=colores[0], edgecolor="white")
+        ax.set_xlabel("Antigüedad (meses)", fontsize=8)
+        ax.set_ylabel("Equipos", fontsize=8)
+        ax.grid(axis="y", alpha=0.2)
+
+    ax.set_title(titulo, fontsize=10, fontweight="bold", pad=8)
+    ax.tick_params(labelsize=8)
+    fig.tight_layout()
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+
+def _imagen_grafica(titulo, tipo, df, columna=None, columna2=None, ancho=8.4):
+    buffer = _grafica_png(titulo, tipo, df, columna, columna2)
+    return Image(buffer, width=ancho * cm, height=(ancho * 0.58) * cm)
+
+
+def generar_reporte_ejecutivo_pdf(df, paises=None, sistemas=None, fecha=None,
+                                  df_filtrado=False):
+    """Reporte ejecutivo visual con indicadores y las gráficas del dashboard."""
+    fecha = fecha or datetime.now()
+    preparado = preparar(df)
+    t = preparado if df_filtrado else filtrar(preparado, paises, sistemas)
+    if t.empty:
+        raise ValueError("No hay equipos con los filtros elegidos.")
+
+    e = _estilos()
+    n = _numeros(t)
+    texto_paises = ", ".join(paises) if paises else "Todos"
+    texto_so = ", ".join(sistemas) if sistemas else "Todos"
+
+    h = [
+        Paragraph("Reporte Ejecutivo de Cifrado de Equipos", e["titulo"]),
+        Paragraph("Resumen visual para dirección y comités", e["subtitulo"]),
+        _ficha(fecha, texto_paises, texto_so, n["total"], e),
+        Spacer(1, 12),
+        _tarjetas(n, e),
+    ]
+
+    h += _seccion("1.", "Resumen ejecutivo", e)
+    h.append(Paragraph(_parrafo_grupo(t), e["normal"]))
+
+    h += _seccion("2.", "Cifrado y cumplimiento", e)
+    g1 = _imagen_grafica("Estado de cifrado", "dona", t, "estado_cifrado")
+    g2 = _imagen_grafica("Estado de cumplimiento", "dona", t, "estado_cumplimiento")
+    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+
+    h += _seccion("3.", "Distribución geográfica", e)
+    g1 = _imagen_grafica("Equipos por país", "barras", t, "pais")
+    g2 = _imagen_grafica("Cifrado por país", "apiladas", t, "pais", "estado_cifrado")
+    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+
+    h += _seccion("4.", "Sistema operativo y tecnología", e)
+    g1 = _imagen_grafica("Cifrado por sistema operativo", "apiladas",
+                         t, "sistema_operativo", "estado_cifrado")
+    g2 = _imagen_grafica("Tecnología de cifrado", "barras", t, "tecnologia_cifrado")
+    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+
+    h += _seccion("5.", "Hardware y antigüedad", e)
+    g1 = _imagen_grafica("Estado de TPM", "barras", t, "estado_tpm")
+    g2 = _imagen_grafica("Antigüedad de los equipos", "histograma", t)
+    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+
+    h.append(PageBreak())
+    h += _seccion("6.", "Conclusión ejecutiva", e)
+    con_desv = n["con_desv"]
+    cifrado = n["cifrados"]
+    en_mdm = n["en_mdm"]
+    h.append(Paragraph(
+        f"Con {_cuenta(n['total'], 'equipo incluido', 'equipos incluidos')} en el alcance "
+        f"seleccionado, {_cuenta(con_desv, 'equipo presenta', 'equipos presentan')} al menos una "
+        f"desviación. De los {_cuenta(en_mdm, ' equipo gestionado por MDM', ' equipos gestionados por MDM')}, "
+        f"{_cuenta(cifrado, ' equipo está cifrado', ' equipos están cifrados')}. "
+        "Se recomienda priorizar la atención de equipos sin cifrado, sin reporte al MDM y con recencia superior a 90 días.",
+        e["normal"],
+    ))
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=3.1 * cm,
+        bottomMargin=2.2 * cm,
+        title="Reporte ejecutivo de cifrado de equipos",
+        author="Auditoría Interna",
+    )
     doc.build(h, canvasmaker=_CanvasNumerado)
     return buffer.getvalue()

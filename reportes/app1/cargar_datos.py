@@ -8,7 +8,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from conexion import conectar
+from reportes.app1.conexion import conectar
 
 CARPETA = Path(__file__).resolve().parent
 SQL_CREAR_TABLA = CARPETA / "sql" / "crear_tabla.sql"
