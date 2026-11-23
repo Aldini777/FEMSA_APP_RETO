@@ -168,7 +168,7 @@ def heatmap(df, fila, columna):
 def obtener_datos():
     st.sidebar.header("Fuente de datos")
     fuente = st.sidebar.radio(
-        "Origen", ["Base de datos (equipos_raw)", "Subir CSV"])
+        "Origen", ["Base de datos (equipos_raw)", "Subir CSV"], index=1)
 
     if fuente == "Subir CSV":
         archivo = st.sidebar.file_uploader("Archivo CSV", type="csv")
