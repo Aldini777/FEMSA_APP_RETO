@@ -15,10 +15,12 @@ Logo: guardar el archivo oficial en reportes/assets/logo_femsa.png
 import io
 import os
 import re
-import matplotlib.pyplot as plt
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")  # sin ventana, solo para generar imágenes
+import matplotlib.pyplot as plt
 import pandas as pd
 import psycopg2
 from reportlab import rl_config
@@ -26,6 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate,
                                 Spacer, Table, TableStyle)
@@ -304,7 +307,6 @@ def _tarjetas(n, e):
              (_pct(n["en_mdm"], n["total"]), "Reportan al MDM"),
              (_pct(n["cifrados"], n["en_mdm"]), "Cifrados dentro del MDM"),
              (f"{n['con_desv']:,}", "Equipos con desviación")]
-    fila = [[Paragraph(num, e["kpi_num"]), ] for num, _ in datos]
     celdas = [[Paragraph(num, e["kpi_num"]) for num, _ in datos],
               [Paragraph(etq, e["kpi_etq"]) for _, etq in datos]]
     ancho = ANCHO_UTIL / 4
@@ -568,30 +570,54 @@ def generar_reporte_tecnico_pdf(df, paises=None, sistemas=None, fecha=None,
     return buffer.getvalue()
 
 
+COLORES_GRAFICA = ["#C8102E", "#3D4A5C", "#E8A317", "#8A9BB0", "#7A1F2B", "#C9B79C"]
+
+
+def _estilo_ejes(ax):
+    """Quita bordes innecesarios y deja una cuadrícula suave."""
+    for lado in ("top", "right"):
+        ax.spines[lado].set_visible(False)
+    for lado in ("left", "bottom"):
+        ax.spines[lado].set_color("#BFBFBF")
+    ax.tick_params(labelsize=8, colors="#3D3D3D")
+
+
 def _grafica_png(titulo, tipo, df, columna=None, columna2=None):
     """Convierte una gráfica del dashboard en una imagen PNG para el reporte ejecutivo."""
-    fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
+    fig, ax = plt.subplots(figsize=(6.4, 4.2), dpi=170)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
-    colores = ["#C8102E", "#3D4A5C", "#E8A317", "#8A9BB0", "#7A1F2B", "#C9B79C"]
+    colores = COLORES_GRAFICA
 
     if tipo == "dona" and columna:
         conteo = df[columna].fillna("Sin dato").astype(str).value_counts()
-        ax.pie(conteo.values, labels=conteo.index, autopct="%1.1f%%",
-               colors=colores, startangle=90, textprops={"fontsize": 8})
-        centro = plt.Circle((0, 0), 0.55, fc="white")
-        ax.add_artist(centro)
+        cuñas, _, textos = ax.pie(
+            conteo.values, colors=colores[:len(conteo)] if len(conteo) <= len(colores) else None,
+            startangle=90, counterclock=False,
+            autopct=lambda p: f"{p:.1f}%" if p >= 4 else "", pctdistance=0.77,
+            wedgeprops=dict(width=0.45, edgecolor="white", linewidth=1.5))
+        for texto in textos:
+            texto.set_color("white")
+            texto.set_fontsize(8)
+            texto.set_fontweight("bold")
+        ax.set_aspect("equal")   # círculo redondo, no ovalado
+        ax.legend(cuñas, [f"{str(v)[:26]} ({c:,})" for v, c in conteo.items()],
+                  loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=8, frameon=False)
 
     elif tipo == "barras" and columna:
-        conteo = df[columna].fillna("Sin dato").astype(str).value_counts().head(12)
-        ax.bar(range(len(conteo)), conteo.values, color=colores[0])
-        ax.set_xticks(range(len(conteo)))
-        ax.set_xticklabels([str(v)[:18] for v in conteo.index], rotation=35,
-                           ha="right", fontsize=7)
-        ax.set_ylabel("Equipos", fontsize=8)
-        ax.grid(axis="y", alpha=0.2)
+        conteo = df[columna].fillna("Sin dato").astype(str).value_counts().head(10)
+        conteo = conteo.iloc[::-1]   # la barra más grande arriba
+        ax.barh(range(len(conteo)), conteo.values, color=colores[0], height=0.65)
+        ax.set_yticks(range(len(conteo)))
+        ax.set_yticklabels([str(v)[:28] for v in conteo.index], fontsize=8)
+        ax.set_xlabel("Equipos", fontsize=8)
+        ax.grid(axis="x", alpha=0.25)
+        ax.set_axisbelow(True)
+        maximo = conteo.max() if len(conteo) else 0
+        ax.set_xlim(0, maximo * 1.15 if maximo else 1)
         for i, valor in enumerate(conteo.values):
-            ax.text(i, valor, f"{valor:,}", ha="center", va="bottom", fontsize=7)
+            ax.text(valor + maximo * 0.01, i, f"{valor:,}", va="center", fontsize=7.5)
+        _estilo_ejes(ax)
 
     elif tipo == "apiladas" and columna and columna2:
         tabla = pd.crosstab(df[columna].fillna("Sin dato"),
@@ -599,37 +625,138 @@ def _grafica_png(titulo, tipo, df, columna=None, columna2=None):
         izquierda = 0
         for i, categoria in enumerate(tabla.columns):
             valores = tabla[categoria].values
-            ax.barh(range(len(tabla.index)), valores, left=izquierda,
-                    label=str(categoria)[:24], color=colores[i % len(colores)])
+            ax.barh(range(len(tabla.index)), valores, left=izquierda, height=0.65,
+                    label=str(categoria)[:24], color=colores[i % len(colores)],
+                    edgecolor="white", linewidth=0.8)
             izquierda += valores
         ax.set_yticks(range(len(tabla.index)))
-        ax.set_yticklabels([str(v)[:22] for v in tabla.index], fontsize=7)
+        ax.set_yticklabels([str(v)[:22] for v in tabla.index], fontsize=8)
+        ax.set_xlim(0, 100)
         ax.set_xlabel("% de equipos", fontsize=8)
         ax.invert_yaxis()
-        ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.42),
-                  ncol=2, fontsize=7, frameon=False)
-        ax.grid(axis="x", alpha=0.2)
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16),
+                  ncol=min(3, len(tabla.columns)), fontsize=7.5, frameon=False)
+        _estilo_ejes(ax)
 
     elif tipo == "histograma":
         valores = pd.to_numeric(df.get("antiguedad_meses"), errors="coerce").dropna()
-        ax.hist(valores, bins=30, color=colores[0], edgecolor="white")
-        ax.set_xlabel("Antigüedad (meses)", fontsize=8)
-        ax.set_ylabel("Equipos", fontsize=8)
-        ax.grid(axis="y", alpha=0.2)
+        if valores.empty:
+            ax.text(0.5, 0.5, "Sin datos de antigüedad", ha="center", va="center",
+                    fontsize=10, color="#6E6E6E", transform=ax.transAxes)
+            ax.axis("off")
+        else:
+            ax.hist(valores, bins=30, color=colores[0], edgecolor="white")
+            ax.set_xlabel("Antigüedad (meses)", fontsize=8)
+            ax.set_ylabel("Equipos", fontsize=8)
+            ax.grid(axis="y", alpha=0.25)
+            ax.set_axisbelow(True)
+            _estilo_ejes(ax)
 
-    ax.set_title(titulo, fontsize=10, fontweight="bold", pad=8)
-    ax.tick_params(labelsize=8)
+    ax.set_title(titulo, fontsize=11, fontweight="bold", color="#2B2B2B", loc="left", pad=10)
     fig.tight_layout()
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", bbox_inches="tight")
+    fig.savefig(buffer, format="png", bbox_inches="tight", pad_inches=0.15,
+                metadata={"Software": None})
     plt.close(fig)
     buffer.seek(0)
     return buffer
 
 
 def _imagen_grafica(titulo, tipo, df, columna=None, columna2=None, ancho=8.4):
+    """Inserta la gráfica respetando su proporción real (así no se aplasta)."""
     buffer = _grafica_png(titulo, tipo, df, columna, columna2)
-    return Image(buffer, width=ancho * cm, height=(ancho * 0.58) * cm)
+    ancho_px, alto_px = ImageReader(buffer).getSize()
+    buffer.seek(0)
+    return Image(buffer, width=ancho * cm, height=ancho * cm * alto_px / ancho_px)
+
+
+def _par_graficas(g1, g2):
+    """Dos gráficas lado a lado, alineadas arriba."""
+    t = Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm])
+    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                           ("RIGHTPADDING", (0, 0), (-1, -1), 2)]))
+    return t
+
+
+def _conciliacion(t, e):
+    """Cuántos equipos están y cuántos no en cada fuente, y en qué combinación."""
+    h = []
+    mac = t[t["sistema_operativo"] == "macOS"]
+    filas = [[Paragraph(c, e["celda_enc"] if i == 0 else e["celda_enc_der"]) for i, c in enumerate(
+        ("Fuente", "Equipos revisados", "Sí están", "No están", "% presentes"))]]
+    fuentes = [("MDM", t, t["en_mdm"].eq("Sí")),
+               ("Directorio Activo", t, t["en_ad"].eq("Sí"))]
+    if not mac.empty:
+        fuentes.append(("Inventario de macOS (solo equipos macOS)", mac, mac["en_macos"].eq("Sí")))
+    for nombre, grupo, presentes in fuentes:
+        si = int(presentes.sum())
+        total = len(grupo)
+        filas.append([Paragraph(nombre, e["celda"]), Paragraph(f"{total:,}", e["celda_der"]),
+                      Paragraph(f"{si:,}", e["celda_der"]), Paragraph(f"{total - si:,}", e["celda_der"]),
+                      Paragraph(_pct(si, total), e["celda_der"])])
+    h.append(KeepTogether(_tabla(filas, [6.6 * cm, 3 * cm, 2.6 * cm, 2.6 * cm, 2.8 * cm], e,
+                                 titulo="Presencia por fuente")))
+    h.append(Spacer(1, 10))
+
+    def combinacion(fila):
+        partes = [n for n, c in (("MDM", "en_mdm"), ("AD", "en_ad"), ("macOS", "en_macos"))
+                  if fila.get(c) == "Sí"]
+        if not partes:
+            return "En ninguna fuente"
+        if len(partes) == 1:
+            return f"Solo en {partes[0]}"
+        return "En " + " y ".join([", ".join(partes[:-1]), partes[-1]])
+
+    combos = t.apply(combinacion, axis=1).value_counts()
+    filas = [[Paragraph("Fuentes donde aparece el equipo", e["celda_enc"]),
+              Paragraph("Equipos", e["celda_enc_der"]), Paragraph("% del total", e["celda_enc_der"])]]
+    for combo, cantidad in sorted(combos.items(), key=lambda x: (-x[1], x[0])):
+        filas.append([Paragraph(combo, e["celda"]), Paragraph(f"{cantidad:,}", e["celda_der"]),
+                      Paragraph(_pct(cantidad, len(t)), e["celda_der"])])
+    h.append(KeepTogether(_tabla(filas, [11.6 * cm, 3 * cm, 3 * cm], e, titulo="Conciliación entre fuentes")))
+    h.append(Paragraph("Los equipos Windows deben aparecer en el MDM y en el Directorio Activo; los equipos "
+                       "macOS se revisan con el inventario de macOS. Un equipo que no aparece en una fuente "
+                       "no tiene evidencia de esa fuente.", e["nota"]))
+    return h
+
+
+def _faltantes(t):
+    """Equipos que no están en alguna de las fuentes que les corresponden."""
+    def falta(fila):
+        f = []
+        if fila["en_mdm"] != "Sí":
+            f.append("MDM")
+        if fila["sistema_operativo"] == "Windows" and fila["en_ad"] != "Sí":
+            f.append("Directorio Activo")
+        if fila["sistema_operativo"] == "macOS" and fila.get("en_macos") != "Sí":
+            f.append("Inventario de macOS")
+        return ", ".join(f)
+    t = t.copy()
+    t["falta_en"] = t.apply(falta, axis=1)
+    return t[t["falta_en"] != ""].sort_values(["pais_reporte", "equipo_id"], kind="mergesort")
+
+
+CIFRADO_MOTIVOS = ["No cifrado", "Sin dato de cifrado", "No reporta al MDM"] + list(MENSAJES.values())
+
+
+def _por_cifrar(t):
+    """Equipos que deben cifrarse o revisar su cifrado, con la acción sugerida."""
+    def accion(fila):
+        if fila["no_cifrado_b"]:
+            return "Cifrar el equipo"
+        if not fila["en_mdm_b"]:
+            return "Sin evidencia: incorporar al MDM y verificar cifrado"
+        if not fila["cifrado_b"]:
+            return "Sin dato de cifrado: verificar"
+        if fila["tecnologia_cifrado"] in MENSAJES:
+            return "Ajustar a la política: " + MENSAJES[fila["tecnologia_cifrado"]].lower()
+        return ""
+    t = t.copy()
+    t["accion"] = t.apply(accion, axis=1)
+    orden = {"Cifrar el equipo": 0}
+    t["orden"] = t["accion"].map(lambda a: orden.get(a, 1 if a.startswith("Sin") else 2))
+    return t[t["accion"] != ""].sort_values(["orden", "pais_reporte", "equipo_id"], kind="mergesort")
 
 
 def generar_reporte_ejecutivo_pdf(df, paises=None, sistemas=None, fecha=None,
@@ -657,29 +784,32 @@ def generar_reporte_ejecutivo_pdf(df, paises=None, sistemas=None, fecha=None,
     h += _seccion("1.", "Resumen ejecutivo", e)
     h.append(Paragraph(_parrafo_grupo(t), e["normal"]))
 
-    h += _seccion("2.", "Cifrado y cumplimiento", e)
+    h += _seccion("2.", "Presencia en las fuentes", e)
+    h += _conciliacion(t, e)
+
+    h += _seccion("3.", "Cifrado y cumplimiento", e)
     g1 = _imagen_grafica("Estado de cifrado", "dona", t, "estado_cifrado")
     g2 = _imagen_grafica("Estado de cumplimiento", "dona", t, "estado_cumplimiento")
-    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+    h[-3:] = [KeepTogether(h[-3:] + [_par_graficas(g1, g2)])]  # título y gráficas juntos
 
-    h += _seccion("3.", "Distribución geográfica", e)
+    h += _seccion("4.", "Distribución geográfica", e)
     g1 = _imagen_grafica("Equipos por país", "barras", t, "pais")
     g2 = _imagen_grafica("Cifrado por país", "apiladas", t, "pais", "estado_cifrado")
-    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+    h[-3:] = [KeepTogether(h[-3:] + [_par_graficas(g1, g2)])]  # título y gráficas juntos
 
-    h += _seccion("4.", "Sistema operativo y tecnología", e)
+    h += _seccion("5.", "Sistema operativo y tecnología", e)
     g1 = _imagen_grafica("Cifrado por sistema operativo", "apiladas",
                          t, "sistema_operativo", "estado_cifrado")
     g2 = _imagen_grafica("Tecnología de cifrado", "barras", t, "tecnologia_cifrado")
-    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+    h[-3:] = [KeepTogether(h[-3:] + [_par_graficas(g1, g2)])]  # título y gráficas juntos
 
-    h += _seccion("5.", "Hardware y antigüedad", e)
+    h += _seccion("6.", "Hardware y antigüedad", e)
     g1 = _imagen_grafica("Estado de TPM", "barras", t, "estado_tpm")
     g2 = _imagen_grafica("Antigüedad de los equipos", "histograma", t)
-    h.append(Table([[g1, g2]], colWidths=[8.8 * cm, 8.8 * cm]))
+    h[-3:] = [KeepTogether(h[-3:] + [_par_graficas(g1, g2)])]  # título y gráficas juntos
 
     h.append(PageBreak())
-    h += _seccion("6.", "Conclusión ejecutiva", e)
+    h += _seccion("7.", "Conclusión ejecutiva", e)
     con_desv = n["con_desv"]
     cifrado = n["cifrados"]
     en_mdm = n["en_mdm"]
@@ -691,6 +821,43 @@ def generar_reporte_ejecutivo_pdf(df, paises=None, sistemas=None, fecha=None,
         "Se recomienda priorizar la atención de equipos sin cifrado, sin reporte al MDM y con recencia superior a 90 días.",
         e["normal"],
     ))
+
+    faltan = _faltantes(t)
+    h.append(PageBreak())
+    h += _seccion("A.", "Anexo. Equipos que no están en alguna fuente", e)
+    if faltan.empty:
+        h.append(Paragraph("Todos los equipos aparecen en las fuentes que les corresponden.", e["normal"]))
+    else:
+        filas = [[Paragraph(c, e["celda_enc"]) for c in ("Equipo", "País", "Sistema operativo", "No está en")]]
+        for _, fila in faltan.head(500).iterrows():
+            filas.append([Paragraph(str(fila["equipo_id"]), e["celda"]),
+                          Paragraph(str(fila["pais_reporte"]), e["celda"]),
+                          Paragraph(str(fila["sistema_operativo"]), e["celda"]),
+                          Paragraph(fila["falta_en"], e["celda"])])
+        h.append(_tabla(filas, [3.4 * cm, 3.6 * cm, 3.2 * cm, 7.4 * cm], e,
+                        titulo=f"{len(faltan):,} equipos que no están en alguna fuente"))
+        if len(faltan) > 500:
+            h.append(Paragraph(f"Se muestran los primeros 500 de {len(faltan):,} equipos. "
+                               "La lista completa está en el reporte técnico.", e["nota"]))
+
+    cifrar = _por_cifrar(t)
+    h.append(PageBreak())
+    h += _seccion("B.", "Anexo. Equipos que deben cifrarse o revisar su cifrado", e)
+    if cifrar.empty:
+        h.append(Paragraph("Todos los equipos están cifrados conforme a la política.", e["normal"]))
+    else:
+        filas = [[Paragraph(c, e["celda_enc"]) for c in ("Equipo", "País", "Sistema operativo", "Acción")]]
+        for _, fila in cifrar.head(500).iterrows():
+            filas.append([Paragraph(str(fila["equipo_id"]), e["celda"]),
+                          Paragraph(str(fila["pais_reporte"]), e["celda"]),
+                          Paragraph(str(fila["sistema_operativo"]), e["celda"]),
+                          Paragraph(fila["accion"], e["celda"])])
+        h.append(_tabla(filas, [3.2 * cm, 3.4 * cm, 3 * cm, 8 * cm], e,
+                        titulo=f"{len(cifrar):,} equipos que requieren acción de cifrado"))
+        h.append(Paragraph("Orden: primero los equipos sin cifrar, después los que no tienen evidencia "
+                           "de cifrado y al final los que no cumplen la política.", e["nota"]))
+        if len(cifrar) > 500:
+            h.append(Paragraph(f"Se muestran los primeros 500 de {len(cifrar):,} equipos.", e["nota"]))
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
