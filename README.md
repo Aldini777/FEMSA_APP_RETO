@@ -66,15 +66,35 @@ puedes volver a crear el contenedor con `docker compose up -d`.
 
 Docker ejecuta una copia del código incluida en la imagen: los cambios que
 hagas en `app2.py`, en las gráficas u otros archivos no aparecen solos. Después
-de modificar el código, construye de nuevo e inicia el contenedor:
+de modificar el código:
+
+1. Abre Docker Desktop y espera a que indique que el motor está en ejecución.
+   Puedes comprobar desde PowerShell que Docker responde con:
+
+   ```powershell
+   docker info
+   ```
+
+2. Abre una terminal en la carpeta raíz del proyecto, donde está `compose.yaml`.
+   Si PowerShell está en otra carpeta, cambia a la del proyecto con:
+
+   ```powershell
+   Set-Location -LiteralPath "C:\ruta\de\tu\proyecto"
+   ```
+
+   Sustituye la ruta de ejemplo por la ubicación real del proyecto.
+
+3. Reconstruye la imagen e inicia el contenedor:
 
 ```powershell
 docker compose up --build -d
 ```
 
-Luego actualiza el navegador. Docker reutiliza las capas que no cambiaron, por
-lo que normalmente no vuelve a descargar e instalar todas las dependencias. Si
-cambias `requirements.txt`, sí tendrá que instalar las dependencias nuevas.
+4. Recarga <http://localhost:8501> en el navegador. Docker reutiliza las capas
+   que no cambiaron, por lo que normalmente no vuelve a descargar e instalar
+   todas las dependencias. Si cambias `requirements.txt`, instalará las
+   dependencias nuevas.
+
 El lanzador `iniciar_app.bat` también ejecuta `docker compose up --build -d`.
 
 Para consultar los registros del contenedor:
