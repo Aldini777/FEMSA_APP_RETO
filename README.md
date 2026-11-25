@@ -115,3 +115,96 @@ contener credenciales y los CSV contienen datos del usuario. La imagen incluye
 el código, las dependencias, el mapa y el logo, pero no los datos. La opción de
 PostgreSQL sigue disponible en la app, aunque requiere una base configurada
 por separado.
+
+---
+
+## Documentación Técnica y Replicabilidad
+
+### 1. En general, ¿qué hace la aplicación?
+La aplicación es un dashboard interactivo desarrollado en **Streamlit** (servido en el puerto `8501`) para el reto de **FEMSA**, orientado al análisis operativo de equipos y visualización de métricas, mapas geográficos de Latinoamérica y generación de reportes automatizados. Permite trabajar directamente con archivos CSV validados (encabezado iniciando en `EquipoID`, validación de nombres, orden de columnas y existencia de filas) o mediante integración con base de datos PostgreSQL, ofreciendo filtros interactivos, visualizaciones gráficas y descarga de reportes ejecutivos y técnicos en PDF.
+
+> *[Completa con tu equipo si desean mayor detalle: describe en 2–4 líneas las métricas clave, filtros principales y vistas del dashboard].*
+
+### 2. Contenido del repositorio
+* `Dockerfile` y `compose.yaml`: Definición de la imagen y configuración del servicio para ejecutar la aplicación en contenedores Docker.
+* `iniciar_app.bat`: Script de arranque automatizado para Windows.
+* `.streamlit/config.toml` y `reportes/.streamlit/config.toml`: Configuración de tema visual y parámetros de Streamlit.
+* `.vscode/settings.json`, `.dockerignore` y `.gitignore`: Configuraciones de entorno de desarrollo y reglas de exclusión para Docker y Git.
+* `reportes/app.py`: Punto de entrada principal de la aplicación.
+* `reportes/app2.py`: Interfaz y lógica principal del dashboard interactivo (carga/validación de CSV, filtros, navegación y descarga de reportes PDF).
+* `reportes/reporte.py`: Generación de reportes ejecutivos y técnicos en formato PDF.
+* `reportes/visualizaciones.py`: Construcción de gráficas y componentes visuales del dashboard.
+* `reportes/mapa_latam.json`: Datos geográficos en formato GeoJSON/JSON para el mapa de Latinoamérica.
+* `reportes/assets/logo_femsa.png`: Logotipo institucional utilizado en la interfaz y en los reportes PDF.
+* `reportes/app1/conexion.py`: Manejo de conexión a base de datos (PostgreSQL).
+* `reportes/app1/cargar_datos.py`: Rutinas de carga y procesamiento de datos hacia base de datos.
+* `reportes/app1/sql/crear_tabla.sql`: Script SQL para crear la estructura de tabla en PostgreSQL.
+* `reportes/requirements.txt` y `reportes/app1/requirements.txt`: Listados de dependencias de Python para la aplicación y el módulo `app1`.
+
+### 3. Versiones de software y librerías
+* **Software del entorno:**
+  * Docker / Docker Desktop (`docker` y `docker compose` v2).
+  * Python 3 (`python3` / `pip`) utilizado en la construcción de la imagen y ejecución local.
+  * Git / utilidades de terminal (`unzip`, PowerShell en Windows o Terminal en macOS/Linux).
+  * PostgreSQL (opcional, si se utiliza la integración con base de datos en lugar de la carga directa de CSV).
+  * *[Completa con tu equipo: anota las versiones exactas verificadas en su entorno, por ejemplo `Python 3.11.x`, `Docker Desktop 4.x`, `PostgreSQL 15/16`].*
+* **Librerías de Python:**
+  * Declaradas en `reportes/requirements.txt` y `reportes/app1/requirements.txt` (instaladas automáticamente al construir la imagen Docker o mediante `pip install -r ...`).
+  * *[Completa con tu equipo: copia aquí las versiones exactas contenidas en `reportes/requirements.txt` y `reportes/app1/requirements.txt`, por ejemplo `streamlit==...`, `pandas==...`, etc.]*.
+
+### 4. Cómo se puede reproducir el proyecto
+
+#### Reproducción con Docker (Windows, macOS y Linux)
+1. Asegúrate de tener **Docker Desktop** abierto y con el motor activo (`docker info`).
+2. Descarga o clona el repositorio y descomprime el archivo ZIP si aplica:
+   ```bash
+   cd ~/Downloads
+   unzip -o "FEMSA_APP_RETO-main.zip"
+   cd FEMSA_APP_RETO-main
+   ```
+3. Construye y levanta el contenedor:
+   ```bash
+   docker compose up --build --force-recreate
+   ```
+   *(En Windows también puedes ejecutar directamente `iniciar_app.bat` o `docker compose up --build -d`)*.
+4. Abre `http://localhost:8501` en tu navegador y carga el archivo CSV correspondiente.
+
+#### Reproducción local con Python (sin Docker)
+1. Entra a la carpeta `reportes/`:
+   ```bash
+   cd reportes
+   ```
+2. Crea y activa un entorno virtual:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+   *(En Windows PowerShell: `.\.venv\Scripts\Activate.ps1`)*.
+3. Instala las dependencias:
+   ```bash
+   pip install -r requirements.txt
+   pip install -r app1/requirements.txt
+   ```
+4. Ejecuta la aplicación:
+   ```bash
+   streamlit run app.py
+   ```
+
+### 5. Fundamentos que deben cumplirse para replicar la aplicación
+* **Motor de contenedores o entorno Python funcional:** Docker Desktop activo con acceso a internet en la primera compilación, o Python 3 con las dependencias de ambos `requirements.txt` instaladas.
+* **Estructura de rutas intacta:** Preservar la jerarquía del repositorio (`reportes/`, `reportes/assets/logo_femsa.png`, `reportes/mapa_latam.json`, `reportes/app1/...`).
+* **Calidad y formato de datos:** Si se usa carga por CSV, el archivo debe iniciar con encabezado `EquipoID`, cumplir con las columnas esperadas en el orden requerido y contener al menos una fila de datos; si se usa PostgreSQL, contar con el servicio activo, credenciales válidas y el esquema creado con `reportes/app1/sql/crear_tabla.sql`.
+* **Configuración segura:** Mantener credenciales o variables de entorno (`.env`) fuera del control de versiones y del ZIP compartido.
+
+### 6. Cómo FEMSA puede replicar el proyecto
+1. **Despliegue del código base:** Obtener el repositorio desde GitHub o el paquete ZIP oficial sin archivos sensibles (`.env` o CSV con datos confidenciales).
+2. **Alineación de datos:** Utilizar archivos CSV operativos que cumplan la estructura validada por la app (iniciando en `EquipoID`) o configurar una instancia de PostgreSQL ejecutando `reportes/app1/sql/crear_tabla.sql` y adaptando `reportes/app1/conexion.py` y `reportes/app1/cargar_datos.py` a los estándares internos de FEMSA.
+3. **Ejecución en entorno controlado:** Levantar el servicio mediante `docker compose up --build -d` (o integrarlo en el orquestador/servidor interno de FEMSA) exponiendo el puerto `8501`.
+4. **Validación operativa y de reportes:** Probar los filtros, el mapa de Latinoamérica (`mapa_latam.json`), las gráficas (`visualizaciones.py`) y la exportación de reportes ejecutivos y técnicos en PDF (`reporte.py`) con datos representativos de operación.
+
+### 7. Problemas de programación encontrados y cómo se resolvieron
+* **Ejecución de comandos de Docker fuera de la carpeta raíz:** Ejecutar `docker compose up --build` desde un directorio padre (como `Downloads`) en lugar de dentro de `FEMSA_APP_RETO-main` provoca `no configuration file provided: not found`; se resuelve navegando primero a la carpeta donde se encuentra `compose.yaml`.
+* **Diferencias entre sistemas operativos (Windows vs. macOS):** El archivo `iniciar_app.bat` está diseñado para Windows, mientras que en macOS se utilizan comandos de terminal (`unzip`, `python3`, `source .venv/bin/activate`, `docker compose`).
+* **Cambios de código no reflejados tras actualizar el ZIP:** Docker empaqueta el código al construir la imagen; al descargar una nueva versión del ZIP, es necesario detener y recrear el contenedor (`docker compose down` y `docker compose up --build --force-recreate`) para que aplique los cambios recientes.
+* **Validación de estructura de archivos CSV:** Se implementaron comprobaciones de encabezado (iniciando en `EquipoID`), columnas esperadas, orden y presencia de filas para evitar fallos silenciosos o gráficas vacías al cargar archivos incompletos o con formato distinto.
+* ***[Completa con tu equipo: agrega aquí incidencias específicas de programación o datos que hayan surgido en `app2.py`, `reporte.py`, `visualizaciones.py` o `app1/` y cómo las resolvieron]*.**
