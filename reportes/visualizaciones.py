@@ -165,10 +165,14 @@ def heatmap(df, fila, columna):
 
 
 # ---------------------------------------------------------------- interfaz
-def obtener_datos():
+def obtener_datos(con_bd=True):
+    """con_bd=False: solo se ofrece subir el CSV (sin la opción de equipos_raw)."""
     st.sidebar.header("Fuente de datos")
-    fuente = st.sidebar.radio(
-        "Origen", ["Base de datos (equipos_raw)", "Subir CSV"], index=1)
+    if con_bd:
+        fuente = st.sidebar.radio(
+            "Origen", ["Base de datos (equipos_raw)", "Subir CSV"], index=1)
+    else:
+        fuente = "Subir CSV"
 
     if fuente == "Subir CSV":
         archivo = st.sidebar.file_uploader("Archivo CSV", type="csv")

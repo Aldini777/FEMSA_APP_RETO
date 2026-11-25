@@ -103,12 +103,9 @@ def al_hacer_clic_en_mapa():
     st.session_state.mapa_version += 1
 
 
-# Colores del mapa (pensados para el tema oscuro de .streamlit/config.toml)
-# Rojo FEMSA para lo elegido; grises para el resto
-COLOR_ELEGIDO, COLOR_DISPONIBLE, COLOR_FONDO = "#C8102E", "#6B7480", "#2A2F38"
-COLOR_BORDE = "#0E1117"          # mismo color que el fondo de la página
-COLOR_TEXTO = "#E6E8EB"          # nombres de los países
-COLOR_PUNTO, COLOR_PUNTO_ELEGIDO = "#C9D1D9", "#FFFFFF"
+# Colores del mapa: rojo FEMSA para lo elegido; grises (según el tema) para el resto.
+# Los demás colores del mapa salen del tema activo (ver TEMAS más abajo).
+COLOR_ELEGIDO = "#C8102E"
 # Dónde va el nombre de cada país respecto a su punto (Centroamérica es estrecha)
 POS_ETIQUETA = {"Guatemala": "middle left", "Nicaragua": "middle right",
                 "Costa Rica": "bottom left", "Panamá": "top right",
@@ -148,7 +145,7 @@ def mapa(conteos):
             xs += x
             ys += y
     fig.add_trace(go.Scatter(x=xs, y=ys, fill="toself", mode="lines", hoverinfo="skip",
-                             fillcolor=COLOR_FONDO, line=dict(color=COLOR_BORDE, width=0.8)))
+                             fillcolor=T["mapa_fondo"], line=dict(color=T["fondo"], width=0.8)))
 
     # Países del catálogo: uno por traza para poder colorearlos por separado
     for p in EN_MAPA:
@@ -156,8 +153,8 @@ def mapa(conteos):
         fig.add_trace(go.Scatter(
             x=x, y=y, fill="toself", mode="lines", hoveron="fills",
             name=f"{p} · {conteos.get(p, 0):,} equipos", customdata=[p] * len(x),
-            fillcolor=COLOR_ELEGIDO if p in elegidos else COLOR_DISPONIBLE,
-            line=dict(color=COLOR_BORDE, width=1),
+            fillcolor=COLOR_ELEGIDO if p in elegidos else T["mapa_disponible"],
+            line=dict(color=T["fondo"], width=1),
         ))
 
     # Punto + nombre en cada país: es lo que se clica (funciona igual en países pequeños)
@@ -165,13 +162,13 @@ def mapa(conteos):
         x=[PAISES[p][3] for p in EN_MAPA], y=[merc(PAISES[p][2]) for p in EN_MAPA],
         mode="markers+text", text=EN_MAPA, customdata=EN_MAPA,
         textposition=[POS_ETIQUETA.get(p, "top center") for p in EN_MAPA],
-        textfont=dict(size=11, color=COLOR_TEXTO),
+        textfont=dict(size=11, color=T["texto"]),
         hovertext=[f"<b>{p}</b><br>{region_de(p)}<br>{conteos.get(p, 0):,} equipos"
                    for p in EN_MAPA],
         hoverinfo="text",
-        marker=dict(size=12, color=[COLOR_PUNTO_ELEGIDO if p in elegidos else COLOR_PUNTO for p in EN_MAPA],
-                    line=dict(color=COLOR_BORDE, width=2)),
-        unselected=dict(marker=dict(opacity=1), textfont=dict(color=COLOR_TEXTO)),
+        marker=dict(size=12, color=[T["punto_elegido"] if p in elegidos else T["punto"] for p in EN_MAPA],
+                    line=dict(color=T["fondo"], width=2)),
+        unselected=dict(marker=dict(opacity=1), textfont=dict(color=T["texto"])),
     ))
 
     fig.update_xaxes(range=[-118, -33], visible=False, fixedrange=True)
@@ -179,18 +176,58 @@ def mapa(conteos):
                      scaleanchor="x", scaleratio=1)
     fig.update_layout(height=600, margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
                       plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                      dragmode=False, hoverlabel=dict(bgcolor="#1C2129", font_size=13, font_color=COLOR_TEXTO))
+                      dragmode=False, hoverlabel=dict(bgcolor=T["tarjeta"], font_size=13, font_color=T["texto"]))
     return fig
 
 
 # ---------------------------------------------------------------- diseño de la página
 ROJO = "#C8102E"
 PALETA = viz.PALETA
-TEXTO, TEXTO_SUAVE = "#E6E8EB", "#9AA3AF"
-TARJETA, BORDE = "#1C2129", "#2A2F38"
 LOGO = RAIZ / "assets" / "logo_femsa.png"
 
-CSS = f"""
+# Dos temas: noche (default) y claro. "streamlit" es lo que se le pasa al tema
+# nativo de Streamlit (widgets, tablas, barra lateral); el resto lo usa nuestro CSS
+# y las gráficas.
+TEMAS = {
+    "noche": {
+        "streamlit": {"base": "dark", "primaryColor": ROJO, "backgroundColor": "#0E1117",
+                      "secondaryBackgroundColor": "#1C2129", "textColor": "#E6E8EB"},
+        "fondo": "#0E1117", "texto": "#E6E8EB", "texto_suave": "#9AA3AF",
+        "tarjeta": "#1C2129", "borde": "#2A2F38", "chip_rojo_texto": "#FFFFFF",
+        "mapa_fondo": "#2A2F38", "mapa_disponible": "#6B7480",
+        "punto": "#C9D1D9", "punto_elegido": "#FFFFFF",
+    },
+    "claro": {
+        "streamlit": {"base": "light", "primaryColor": ROJO, "backgroundColor": "#FFFFFF",
+                      "secondaryBackgroundColor": "#F4F5F7", "textColor": "#2B2F36"},
+        "fondo": "#FFFFFF", "texto": "#2B2F36", "texto_suave": "#5F6B7A",
+        "tarjeta": "#F4F5F7", "borde": "#E1E4E8", "chip_rojo_texto": "#A50D26",
+        "mapa_fondo": "#E6E8EB", "mapa_disponible": "#9AA3AF",
+        "punto": "#5F6B7A", "punto_elegido": "#2B2F36",
+    },
+}
+T = TEMAS["noche"]          # tema activo; se cambia en aplicar_tema()
+
+
+def aplicar_tema():
+    """Toggle de la barra lateral: elige el tema y lo aplica también a Streamlit."""
+    global T
+    noche = st.sidebar.toggle("Modo noche", value=True, key="modo_noche")
+    T = TEMAS["noche" if noche else "claro"]
+    # El tema nativo de Streamlit se manda al navegador al iniciar cada ejecución,
+    # así que si cambió se ajusta y se vuelve a ejecutar una vez.
+    cambio = False
+    for opcion, valor in T["streamlit"].items():
+        if st.get_option(f"theme.{opcion}") != valor:
+            st._config.set_option(f"theme.{opcion}", valor)
+            cambio = True
+    if cambio:
+        st.rerun()
+
+
+def css():
+    TEXTO, TEXTO_SUAVE, TARJETA, BORDE = T["texto"], T["texto_suave"], T["tarjeta"], T["borde"]
+    return f"""
 <style>
 .block-container {{padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1400px;}}
 header[data-testid="stHeader"] {{background: transparent;}}
@@ -207,7 +244,7 @@ header[data-testid="stHeader"] {{background: transparent;}}
 .chips .etq {{color: {TEXTO_SUAVE}; font-size: 0.85rem; margin-right: 0.2rem;}}
 .chip {{background: {TARJETA}; border: 1px solid {BORDE}; color: {TEXTO}; border-radius: 999px;
         padding: 0.18rem 0.75rem; font-size: 0.82rem;}}
-.chip.rojo {{border-color: {ROJO}; color: #FFFFFF; background: rgba(200,16,46,0.18);}}
+.chip.rojo {{border-color: {ROJO}; color: {T["chip_rojo_texto"]}; background: rgba(200,16,46,0.18);}}
 
 .kpi {{background: {TARJETA}; border: 1px solid {BORDE}; border-top: 3px solid {ROJO};
        border-radius: 14px; padding: 1rem 1.2rem; height: 100%;}}
@@ -246,7 +283,7 @@ def logo_html():
 
 
 def encabezado():
-    st.markdown(CSS, unsafe_allow_html=True)
+    st.markdown(css(), unsafe_allow_html=True)
     st.markdown(f"""
     <div class="encabezado">
       {logo_html()}
@@ -291,17 +328,18 @@ def tarjetas(df):
 
 
 def pintar(fig, alto=360):
-    """Mismo estilo oscuro para todas las gráficas."""
+    """Mismo estilo (según el tema activo) para todas las gráficas."""
     fig.update_layout(
         height=alto, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=TEXTO, size=12), colorway=PALETA,
+        font=dict(color=T["texto"], size=12), colorway=PALETA,
         margin=dict(l=10, r=10, t=10, b=10),
         legend=dict(orientation="h", yanchor="bottom", y=-0.32, xanchor="center", x=0.5,
                     title_text="", font=dict(size=11)),
-        hoverlabel=dict(bgcolor=TARJETA, font_color=TEXTO),
+        hoverlabel=dict(bgcolor=T["tarjeta"], font_color=T["texto"]),
     )
-    fig.update_xaxes(gridcolor=BORDE, zerolinecolor=BORDE, linecolor=BORDE, automargin=True)
-    fig.update_yaxes(gridcolor=BORDE, zerolinecolor=BORDE, linecolor=BORDE, automargin=True)
+    borde = T["borde"]
+    fig.update_xaxes(gridcolor=borde, zerolinecolor=borde, linecolor=borde, automargin=True)
+    fig.update_yaxes(gridcolor=borde, zerolinecolor=borde, linecolor=borde, automargin=True)
     return fig
 
 
@@ -324,7 +362,7 @@ def grafica(titulo, fig, alto=360, key=None):
 def dona(df, col):
     fig = viz.dona(df, col)
     fig.update_traces(textinfo="percent", textposition="inside", insidetextorientation="horizontal",
-                      marker=dict(colors=PALETA, line=dict(color="#0E1117", width=2)))
+                      marker=dict(colors=PALETA, line=dict(color=T["fondo"], width=2)))
     fig.update_layout(showlegend=True)
     return fig
 
@@ -472,9 +510,10 @@ def selector_paises(df):
 def main():
     st.set_page_config(page_title="Auditoría de cifrado - FEMSA", layout="wide",
                        initial_sidebar_state="expanded")
+    aplicar_tema()
     encabezado()
 
-    df = viz.obtener_datos()
+    df = viz.obtener_datos(con_bd=False)
     if df is None:
         return
 
