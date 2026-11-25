@@ -110,7 +110,7 @@ persona necesita Docker Desktop en Windows; en el primer inicio necesitará
 internet para construir la imagen y después podrá cargar su propio CSV desde la
 interfaz. No es una aplicación independiente ni un `.exe`.
 
-No incluyas `.env` ni archivos CSV en el ZIP: el archivo de entorno puede
+No se incluye `.env` ni archivos CSV en el ZIP: el archivo de entorno puede
 contener credenciales y los CSV contienen datos del usuario. La imagen incluye
 el código, las dependencias, el mapa y el logo, pero no los datos. La opción de
 PostgreSQL sigue disponible en la app, aunque requiere una base configurada
@@ -122,8 +122,6 @@ por separado.
 
 ### 1. En general, ¿qué hace la aplicación?
 La aplicación es un dashboard interactivo desarrollado en **Streamlit** (servido en el puerto `8501`) para el reto de **FEMSA**, orientado al análisis operativo de equipos y visualización de métricas, mapas geográficos de Latinoamérica y generación de reportes automatizados. Permite trabajar directamente con archivos CSV validados (encabezado iniciando en `EquipoID`, validación de nombres, orden de columnas y existencia de filas) o mediante integración con base de datos PostgreSQL, ofreciendo filtros interactivos, visualizaciones gráficas y descarga de reportes ejecutivos y técnicos en PDF.
-
-> *[Completa con tu equipo si desean mayor detalle: describe en 2–4 líneas las métricas clave, filtros principales y vistas del dashboard].*
 
 ### 2. Contenido del repositorio
 * `Dockerfile` y `compose.yaml`: Definición de la imagen y configuración del servicio para ejecutar la aplicación en contenedores Docker.
